@@ -159,7 +159,7 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   ReadOptions read_options;
   read_options.verify_checksums = false;
   Status s;
-  s = ReadBlockContents(file, footer, read_options, handle, &block_contents,
+  s = ReadBlockContents(nullptr, file, footer, read_options, handle, &block_contents,
                         env, false);
 
   if (!s.ok()) {
@@ -257,7 +257,7 @@ Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
   BlockContents metaindex_contents;
   ReadOptions read_options;
   read_options.verify_checksums = false;
-  s = ReadBlockContents(file, footer, read_options, metaindex_handle,
+  s = ReadBlockContents(nullptr, file, footer, read_options, metaindex_handle,
                         &metaindex_contents, env, false);
   if (!s.ok()) {
     return s;
@@ -311,7 +311,7 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   BlockContents metaindex_contents;
   ReadOptions read_options;
   read_options.verify_checksums = false;
-  s = ReadBlockContents(file, footer, read_options, metaindex_handle,
+  s = ReadBlockContents(nullptr, file, footer, read_options, metaindex_handle,
                         &metaindex_contents, env, false);
   if (!s.ok()) {
     return s;
@@ -340,7 +340,7 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   BlockContents metaindex_contents;
   ReadOptions read_options;
   read_options.verify_checksums = false;
-  status = ReadBlockContents(file, footer, read_options, metaindex_handle,
+  status = ReadBlockContents(nullptr, file, footer, read_options, metaindex_handle,
                              &metaindex_contents, env, false);
   if (!status.ok()) {
     return status;
@@ -360,7 +360,7 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   }
 
   // Reading metablock
-  return ReadBlockContents(file, footer, read_options, block_handle, contents,
+  return ReadBlockContents(nullptr, file, footer, read_options, block_handle, contents,
                            env, false);
 }
 

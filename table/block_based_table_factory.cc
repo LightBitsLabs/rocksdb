@@ -20,6 +20,7 @@
 #include "table/block_based_table_builder.h"
 #include "table/block_based_table_reader.h"
 #include "table/format.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -50,26 +51,29 @@ BlockBasedTableFactory::BlockBasedTableFactory(
 Status BlockBasedTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
     unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-    unique_ptr<TableReader>* table_reader) const {
+    unique_ptr<TableReader>* table_reader, const std::string& fname) const {
   return NewTableReader(table_reader_options, std::move(file), file_size,
                         table_reader,
-                        /*prefetch_index_and_filter=*/true);
+                        /*prefetch_index_and_filter=*/true, fname);
 }
 
 Status BlockBasedTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
     unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-    unique_ptr<TableReader>* table_reader, const bool prefetch_enabled) const {
+    unique_ptr<TableReader>* table_reader, const bool prefetch_enabled, const std::string& fname) const {
   return BlockBasedTable::Open(
       table_reader_options.ioptions, table_reader_options.env_options,
       table_options_, table_reader_options.internal_comparator, std::move(file),
-      file_size, table_reader, prefetch_enabled,
+      file_size, table_reader, fname, prefetch_enabled,
       table_reader_options.skip_filters, table_reader_options.level);
 }
 
 TableBuilder* BlockBasedTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+    WritableFileWriter* file, const std::string& fname) const {
+
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside BlockBasedTableFactory::NewTableBuilder, fname = %s", fname.c_str());
   auto table_builder = new BlockBasedTableBuilder(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
@@ -78,7 +82,8 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
       table_builder_options.compression_opts,
       table_builder_options.compression_dict,
       table_builder_options.skip_filters,
-      table_builder_options.column_family_name);
+      table_builder_options.column_family_name,
+      fname);
 
   return table_builder;
 }

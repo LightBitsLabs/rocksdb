@@ -327,7 +327,7 @@ class TestPlainTableFactory : public PlainTableFactory {
   Status NewTableReader(const TableReaderOptions& table_reader_options,
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table) const override {
+                        unique_ptr<TableReader>* table, const std::string& fname) const override {
     TableProperties* props = nullptr;
     auto s =
         ReadTableProperties(file.get(), file_size, kPlainTableMagicNumber,

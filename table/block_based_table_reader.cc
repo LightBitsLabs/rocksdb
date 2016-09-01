@@ -42,6 +42,7 @@
 #include "util/perf_context_imp.h"
 #include "util/stop_watch.h"
 #include "util/string_util.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -66,13 +67,13 @@ const size_t kMaxCacheKeyPrefixSize __attribute__((unused)) =
 // On success fill *result and return OK - caller owns *result
 // @param compression_dict Data for presetting the compression library's
 //    dictionary.
-Status ReadBlockFromFile(RandomAccessFileReader* file, const Footer& footer,
+Status ReadBlockFromFile(rocksdb::Logger* info_log, RandomAccessFileReader* file, const Footer& footer,
                          const ReadOptions& options, const BlockHandle& handle,
                          std::unique_ptr<Block>* result, Env* env,
                          bool do_uncompress = true,
                          const Slice& compression_dict = Slice()) {
   BlockContents contents;
-  Status s = ReadBlockContents(file, footer, options, handle, &contents, env,
+  Status s = ReadBlockContents(info_log, file, footer, options, handle, &contents, env,
                                do_uncompress, compression_dict);
   if (s.ok()) {
     result->reset(new Block(std::move(contents)));
@@ -186,7 +187,7 @@ class BinarySearchIndexReader : public IndexReader {
                        const Comparator* comparator,
                        IndexReader** index_reader) {
     std::unique_ptr<Block> index_block;
-    auto s = ReadBlockFromFile(file, footer, ReadOptions(), index_handle,
+    auto s = ReadBlockFromFile(nullptr, file, footer, ReadOptions(), index_handle,
                                &index_block, env);
 
     if (s.ok()) {
@@ -233,7 +234,7 @@ class HashIndexReader : public IndexReader {
                        IndexReader** index_reader,
                        bool hash_index_allow_collision) {
     std::unique_ptr<Block> index_block;
-    auto s = ReadBlockFromFile(file, footer, ReadOptions(), index_handle,
+    auto s = ReadBlockFromFile(nullptr, file, footer, ReadOptions(), index_handle,
                                &index_block, env);
 
     if (!s.ok()) {
@@ -268,13 +269,13 @@ class HashIndexReader : public IndexReader {
 
     // Read contents for the blocks
     BlockContents prefixes_contents;
-    s = ReadBlockContents(file, footer, ReadOptions(), prefixes_handle,
+    s = ReadBlockContents(nullptr, file, footer, ReadOptions(), prefixes_handle,
                           &prefixes_contents, env, true /* do decompression */);
     if (!s.ok()) {
       return s;
     }
     BlockContents prefixes_meta_contents;
-    s = ReadBlockContents(file, footer, ReadOptions(), prefixes_meta_handle,
+    s = ReadBlockContents(nullptr, file, footer, ReadOptions(), prefixes_meta_handle,
                           &prefixes_meta_contents, env,
                           true /* do decompression */);
     if (!s.ok()) {
@@ -514,6 +515,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
                              unique_ptr<RandomAccessFileReader>&& file,
                              uint64_t file_size,
                              unique_ptr<TableReader>* table_reader,
+                             const std::string& fname,
                              const bool prefetch_index_and_filter,
                              const bool skip_filters, const int level) {
   table_reader->reset();
@@ -539,7 +541,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   rep->index_type = table_options.index_type;
   rep->hash_index_allow_collision = table_options.hash_index_allow_collision;
   SetupCacheKeyPrefix(rep, file_size);
-  unique_ptr<BlockBasedTable> new_table(new BlockBasedTable(rep));
+  unique_ptr<BlockBasedTable> new_table(new BlockBasedTable(rep, fname));
 
   // Read meta index
   std::unique_ptr<Block> meta;
@@ -736,6 +738,7 @@ Status BlockBasedTable::ReadMetaBlock(Rep* rep,
   //  TODO: we never really verify check sum for meta index block
   std::unique_ptr<Block> meta;
   Status s = ReadBlockFromFile(
+      nullptr,
       rep->file.get(),
       rep->footer,
       ReadOptions(),
@@ -906,7 +909,7 @@ FilterBlockReader* BlockBasedTable::ReadFilter(Rep* rep, size_t* filter_size) {
     return nullptr;
   }
   BlockContents block;
-  if (!ReadBlockContents(rep->file.get(), rep->footer, ReadOptions(),
+  if (!ReadBlockContents(nullptr, rep->file.get(), rep->footer, ReadOptions(),
                          rep->filter_handle, &block, rep->ioptions.env,
                          false).ok()) {
     // Error reading the block
@@ -1092,6 +1095,8 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
     BlockIter* input_iter) {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 1");
+        //LogFlush(rep->ioptions.info_log);
   const bool no_io = (ro.read_tier == kBlockCacheTier);
   Cache* block_cache = rep->table_options.block_cache.get();
   Cache* block_cache_compressed =
@@ -1119,6 +1124,8 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
   }
   // If either block cache is enabled, we'll try to read from it.
   if (block_cache != nullptr || block_cache_compressed != nullptr) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 2");
+        //LogFlush(rep->ioptions.info_log);
     Statistics* statistics = rep->ioptions.statistics;
     char cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
     char compressed_cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
@@ -1145,13 +1152,15 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
       std::unique_ptr<Block> raw_block;
       {
         StopWatch sw(rep->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
-        s = ReadBlockFromFile(rep->file.get(), rep->footer, ro, handle,
+        s = ReadBlockFromFile(rep->ioptions.info_log, rep->file.get(), rep->footer, ro, handle,
                               &raw_block, rep->ioptions.env,
                               block_cache_compressed == nullptr,
                               compression_dict);
       }
 
       if (s.ok()) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 3");
+        //LogFlush(rep->ioptions.info_log);
         s = PutDataBlockToCache(key, ckey, block_cache, block_cache_compressed,
                                 ro, statistics, &block, raw_block.release(),
                                 rep->table_options.format_version,
@@ -1162,7 +1171,11 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
 
   // Didn't get any data from block caches.
   if (s.ok() && block.value == nullptr) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 4");
+        //LogFlush(rep->ioptions.info_log);
     if (no_io) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator no IO");
+        //LogFlush(rep->ioptions.info_log);
       // Could not read from block_cache and can't do IO
       if (input_iter != nullptr) {
         input_iter->SetStatus(Status::Incomplete("no blocking io"));
@@ -1172,16 +1185,22 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
       }
     }
     std::unique_ptr<Block> block_value;
-    s = ReadBlockFromFile(rep->file.get(), rep->footer, ro, handle,
+    s = ReadBlockFromFile(rep->ioptions.info_log, rep->file.get(), rep->footer, ro, handle,
                           &block_value, rep->ioptions.env,
                           true /* do_uncompress */, compression_dict);
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator after read block from file");
+        //LogFlush(rep->ioptions.info_log);
     if (s.ok()) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator after read status ok");
+        //LogFlush(rep->ioptions.info_log);
       block.value = block_value.release();
     }
   }
 
   InternalIterator* iter;
   if (s.ok() && block.value != nullptr) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 5");
+        //LogFlush(rep->ioptions.info_log);
     iter = block.value->NewIterator(&rep->internal_comparator, input_iter);
     if (block.cache_handle != nullptr) {
       iter->RegisterCleanup(&ReleaseCachedEntry, block_cache,
@@ -1190,10 +1209,16 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
       iter->RegisterCleanup(&DeleteHeldResource<Block>, block.value, nullptr);
     }
   } else {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 6");
+        //LogFlush(rep->ioptions.info_log);
     if (input_iter != nullptr) {
       input_iter->SetStatus(s);
       iter = input_iter;
+       //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator input iter is not null");
+        // LogFlush(rep->ioptions.info_log);
     } else {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log, "Mark NewDataBlockIterator 7");
+        //LogFlush(rep->ioptions.info_log);
       iter = NewErrorInternalIterator(s);
     }
   }
@@ -1354,45 +1379,69 @@ bool BlockBasedTable::FullFilterKeyMayMatch(const ReadOptions& read_options,
 Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
                             GetContext* get_context, bool skip_filters) {
   Status s;
+  //StderrLogger marklog;
+  Slice savedValue;
+  char *valp = nullptr;
   CachableEntry<FilterBlockReader> filter_entry;
   if (!skip_filters) {
     filter_entry = GetFilter(read_options.read_tier == kBlockCacheTier);
   }
   FilterBlockReader* filter = filter_entry.value;
 
+  //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark inside BlockBasedTable::Get %s", sstfname.c_str());
+  //LogFlush(rep_->ioptions.info_log);
+
   // First check the full filter
   // If full filter not useful, Then go into each block
   if (!FullFilterKeyMayMatch(read_options, filter, key)) {
+        //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 1");
+        //LogFlush(rep_->ioptions.info_log);
     RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
   } else {
     BlockIter iiter;
+   //     Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 2");
+   //     LogFlush(rep_->ioptions.info_log);
     NewIndexIterator(read_options, &iiter);
-
+     //   Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 3");
+     //   LogFlush(rep_->ioptions.info_log);
     bool done = false;
+      //  Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 4");
+      //  LogFlush(rep_->ioptions.info_log);
     for (iiter.Seek(key); iiter.Valid() && !done; iiter.Next()) {
+       // Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 5");
+       // LogFlush(rep_->ioptions.info_log);
       Slice handle_value = iiter.value();
-
+       // Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 6");
+       // LogFlush(rep_->ioptions.info_log);
       BlockHandle handle;
       bool not_exist_in_filter =
           filter != nullptr && filter->IsBlockBased() == true &&
           handle.DecodeFrom(&handle_value).ok() &&
           !filter->KeyMayMatch(ExtractUserKey(key), handle.offset());
-
+        // Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 7");
+        // LogFlush(rep_->ioptions.info_log);
       if (not_exist_in_filter) {
         // Not found
         // TODO: think about interaction with Merge. If a user key cannot
         // cross one data block, we should be fine.
         RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
+        // Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 8");
+        // LogFlush(rep_->ioptions.info_log);
         break;
       } else {
         BlockIter biter;
+        // Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 9");
+        // LogFlush(rep_->ioptions.info_log);
         NewDataBlockIterator(rep_, read_options, iiter.value(), &biter);
-
+        //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 10");
+        //LogFlush(rep_->ioptions.info_log);
         if (read_options.read_tier == kBlockCacheTier &&
             biter.status().IsIncomplete()) {
           // couldn't get block from block_cache
           // Update Saver.state to Found because we are only looking for whether
           // we can guarantee the key is not there when "no_io" is set
+        //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate 11");
+        //LogFlush(rep_->ioptions.info_log);
           get_context->MarkKeyMayExist();
           break;
         }
@@ -1401,6 +1450,10 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
           break;
         }
 
+        //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark about to iterate");
+        //LogFlush(rep_->ioptions.info_log);
+        //Slice savedValue;
+        //char *valp = nullptr;
         // Call the *saver function on each entry/block until it returns false
         for (biter.Seek(key); biter.Valid(); biter.Next()) {
           ParsedInternalKey parsed_key;
@@ -1408,9 +1461,77 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
             s = Status::Corruption(Slice());
           }
 
-          if (!get_context->SaveValue(parsed_key, biter.value())) {
+          Slice valuePrefix = "LBPH";         
+          if (biter.value().starts_with(valuePrefix)) {
+            const char *lbKeyChars = biter.value().data() + valuePrefix.size();
+            size_t lbKeySize = biter.value().size() - valuePrefix.size();
+            std::string lbKeyStr = std::string(lbKeyChars, lbKeySize);
+            //Error(&marklog, "Mark we read a placeholder now go to memcache with key", lbKeyStr.c_str());
+            //Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark we read a placeholder, now go to memcache with key %s", lbKeyStr.c_str());
+            //LogFlush(rep_->ioptions.info_log);
+            memcached_return_t rc;
+            memcached_st *poolmemc = memcached_pool_pop(memcached_pool, true, &rc);
+            if (rc == MEMCACHED_SUCCESS) {
+              //Error(&marklog, "Mark we got a memc from pool");
+              size_t value_length;
+              // std::string lbKey = sstfname + parsed_key.user_key.ToString();
+              // std::string lbKey = sstfname + std::string(parsed_key.user_key.data(), parsed_key.user_key.size());
+              valp = memcached_get(poolmemc, lbKeyChars , lbKeySize, &value_length, 0, &rc);
+              //Error(&marklog, "Read from memcache sstfname %s sstfnamesize %d keysize %d lbKeysize %d", sstfname.c_str(), 
+              //  sstfname.size(), parsed_key.user_key.size(), lbKeySize);
+
+              if (rc == MEMCACHED_SUCCESS) {
+                //Error(&marklog, "Mark we read a value from memcache with length %d", value_length);
+                //Slice akey = "key000000";
+                std::string valstr = std::string(valp, value_length);
+/*
+    if (parsed_key.user_key == akey) {
+      Error(&marklog, "We just got the target key");
+      std::string avalue = std::string(parsed_key.user_key.data(), parsed_key.user_key.size()) + std::string(1000, 'v');
+      if (!avalue.compare(valstr)) {
+        Error(&marklog, "target value matches!");
+        Error(&marklog, "memcached value: %s size %d", valstr.c_str(), valstr.size());
+      } else {
+        Error(&marklog, "Target value mismatch!!!");
+        Error(&marklog, "original value: %s size %d", avalue.c_str(), avalue.size());
+        Error(&marklog, "memcached value: %s size %d", valstr.c_str(), valstr.size());
+      }
+   }
+*/
+                //free(valp); // stupid behavior by libmemcached....
+                //savedValue = Slice(valstr);
+                savedValue = Slice(valp, value_length);
+                // Error(&marklog, "memcached value: %s size %d", savedValue.ToString().c_str(), savedValue.size());
+	      } else {
+                //Error(&marklog, "Memcached_get rc=%d failure: %s file %s", rc, memcached_strerror(poolmemc, rc), sstfname.c_str());
+                //Error (&marklog, "Last error from server %s", memcached_last_error_message(poolmemc));
+   		Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Key not found in memcached");
+                LogFlush(rep_->ioptions.info_log);
+              }
+              memcached_pool_push(memcached_pool, poolmemc);
+            } else {
+              //Error(&marklog, "Mark could not pop memcache struct from pool");
+              Log(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log, "Mark could not pop memcache struct from pool");
+              LogFlush(rep_->ioptions.info_log);
+            }
+          } else {
+            //Error(&marklog, "Mark small value for %s key %s", sstfname.c_str(), parsed_key.user_key.ToString().c_str());
+            savedValue = Slice(biter.value().data(), biter.value().size());
+          }
+          // and put that value into SaveValue 
+          if (savedValue.size() > 100) {
+  //          Error(&marklog, "large saved value: %s size %d", savedValue.ToString().c_str(), savedValue.size());
+          }
+          if (!get_context->SaveValue(parsed_key, savedValue)) {
             done = true;
+            if (valp != nullptr && valp != NULL) {
+              free(valp);
+            }
             break;
+          } else {
+            if (valp != nullptr && valp != NULL) {
+              free(valp);
+            }
           }
         }
         s = biter.status();
@@ -1691,7 +1812,7 @@ Status BlockBasedTable::DumpTable(WritableFile* out_file) {
       BlockHandle handle;
       if (FindMetaBlock(meta_iter.get(), filter_block_key, &handle).ok()) {
         BlockContents block;
-        if (ReadBlockContents(rep_->file.get(), rep_->footer, ReadOptions(),
+        if (ReadBlockContents(nullptr, rep_->file.get(), rep_->footer, ReadOptions(),
                               handle, &block, rep_->ioptions.env, false).ok()) {
           rep_->filter.reset(new BlockBasedFilterBlockReader(
               rep_->ioptions.prefix_extractor, table_options,

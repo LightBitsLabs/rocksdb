@@ -19,6 +19,10 @@
 #include "rocksdb/status.h"
 #include "table/table_builder.h"
 
+// #include <libmemcached/memcached.hpp>
+#include <libmemcached/memcached.h>
+#include <libmemcached/util.h>
+
 namespace rocksdb {
 
 class BlockBuilder;
@@ -46,7 +50,8 @@ class BlockBasedTableBuilder : public TableBuilder {
       const CompressionType compression_type,
       const CompressionOptions& compression_opts,
       const std::string* compression_dict, const bool skip_filters,
-      const std::string& column_family_name);
+      const std::string& column_family_name,
+      const std::string& fname);
 
   // REQUIRES: Either Finish() or Abandon() has been called.
   ~BlockBasedTableBuilder();
@@ -101,6 +106,11 @@ class BlockBasedTableBuilder : public TableBuilder {
   class BlockBasedTablePropertiesCollectorFactory;
   class BlockBasedTablePropertiesCollector;
   Rep* rep_;
+
+  std::string sstfname;
+  // memcache::Memcache *client;
+  memcached_st *memc;
+  Slice placeholderPrefix;
 
   // Advanced operation: flush any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in

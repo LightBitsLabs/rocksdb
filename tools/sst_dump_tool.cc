@@ -113,6 +113,7 @@ Status SstFileReader::NewTableReader(
     unique_ptr<TableReader>* table_reader) {
   // We need to turn off pre-fetching of index and filter nodes for
   // BlockBasedTable
+  std::string dummy = "dummy";
   shared_ptr<BlockBasedTableFactory> block_table_factory =
       dynamic_pointer_cast<BlockBasedTableFactory>(options_.table_factory);
 
@@ -120,7 +121,7 @@ Status SstFileReader::NewTableReader(
     return block_table_factory->NewTableReader(
         TableReaderOptions(ioptions_, soptions_, internal_comparator_,
                            /*skip_filters=*/false),
-        std::move(file_), file_size, &table_reader_, /*enable_prefetch=*/false);
+        std::move(file_), file_size, &table_reader_, /*enable_prefetch=*/false, dummy);
   }
 
   assert(!block_table_factory);
@@ -128,7 +129,7 @@ Status SstFileReader::NewTableReader(
   // For all other factory implementation
   return options_.table_factory->NewTableReader(
       TableReaderOptions(ioptions_, soptions_, internal_comparator_),
-      std::move(file_), file_size, &table_reader_);
+      std::move(file_), file_size, &table_reader_, dummy);
 }
 
 Status SstFileReader::DumpTable(const std::string& out_filename) {
@@ -154,7 +155,7 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
   table_builder.reset(block_based_tf.NewTableBuilder(
       tb_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      dest_writer.get()));
+      dest_writer.get(), testFileName));
   unique_ptr<InternalIterator> iter(table_reader_->NewIterator(ReadOptions()));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (!iter->status().ok()) {

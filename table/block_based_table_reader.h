@@ -23,6 +23,9 @@
 #include "util/coding.h"
 #include "util/file_reader_writer.h"
 
+#include <libmemcached/memcached.h>
+#include <libmemcached/util.h>
+
 namespace rocksdb {
 
 class Block;
@@ -55,6 +58,9 @@ class BlockBasedTable : public TableReader {
   static const std::string kFilterBlockPrefix;
   static const std::string kFullFilterBlockPrefix;
 
+  static memcached_st* memc;
+  static memcached_pool_st* memcached_pool;
+
   // Attempt to open the table that is stored in bytes [0..file_size)
   // of "file", and read the metadata entries necessary to allow
   // retrieving data from the table.
@@ -75,6 +81,7 @@ class BlockBasedTable : public TableReader {
                      const InternalKeyComparator& internal_key_comparator,
                      unique_ptr<RandomAccessFileReader>&& file,
                      uint64_t file_size, unique_ptr<TableReader>* table_reader,
+                     const std::string& fname,
                      bool prefetch_index_and_filter = true,
                      bool skip_filters = false, int level = -1);
 
@@ -220,8 +227,8 @@ class BlockBasedTable : public TableReader {
 
   static void SetupCacheKeyPrefix(Rep* rep, uint64_t file_size);
 
-  explicit BlockBasedTable(Rep* rep)
-      : rep_(rep), compaction_optimized_(false) {}
+  explicit BlockBasedTable(Rep* rep, const std::string& fname)
+      : rep_(rep), compaction_optimized_(false) , sstfname(fname){}
 
   // Generate a cache key prefix from the file
   static void GenerateCachePrefix(Cache* cc,
@@ -240,6 +247,8 @@ class BlockBasedTable : public TableReader {
   // No copying allowed
   explicit BlockBasedTable(const TableReader&) = delete;
   void operator=(const TableReader&) = delete;
+
+  std::string sstfname;
 };
 
 }  // namespace rocksdb

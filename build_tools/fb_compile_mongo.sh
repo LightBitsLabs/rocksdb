@@ -42,7 +42,7 @@ fi
 scons \
   LINKFLAGS="$EXTRA_LDFLAGS $EXEC_LDFLAGS $PLATFORM_LDFLAGS" \
   CCFLAGS="$CXXFLAGS -L $STATIC_LIB_DEP_DIR" \
-  LIBS="lz4 gcc stdc++" \
+  LIBS="memcached memcachedutil lz4 gcc stdc++" \
   LIBPATH="$ROCKSDB_PATH" \
   CPPPATH="$ROCKSDB_PATH/include" \
   -j32 \

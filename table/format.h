@@ -208,7 +208,7 @@ struct BlockContents {
 
 // Read the block identified by "handle" from "file".  On failure
 // return non-OK.  On success fill *result and return OK.
-extern Status ReadBlockContents(RandomAccessFileReader* file,
+extern Status ReadBlockContents(rocksdb::Logger* info_log, RandomAccessFileReader* file,
                                 const Footer& footer,
                                 const ReadOptions& options,
                                 const BlockHandle& handle,

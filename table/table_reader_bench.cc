@@ -101,7 +101,7 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
                             CompressionOptions(),
                             nullptr /* compression_dict */,
                             false /* skip_filters */, kDefaultColumnFamilyName),
-        0 /* column_family_id */, file_writer.get());
+        0 /* column_family_id */, file_writer.get(), file_name);
   } else {
     s = DB::Open(opts, dbname, &db);
     ASSERT_OK(s);
@@ -139,7 +139,7 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
         new RandomAccessFileReader(std::move(raf)));
     s = opts.table_factory->NewTableReader(
         TableReaderOptions(ioptions, env_options, ikc), std::move(file_reader),
-        file_size, &table_reader);
+        file_size, &table_reader, file_name);
     if (!s.ok()) {
       fprintf(stderr, "Open Table Error: %s\n", s.ToString().c_str());
       exit(1);

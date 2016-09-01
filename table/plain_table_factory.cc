@@ -17,7 +17,7 @@ namespace rocksdb {
 Status PlainTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
     unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-    unique_ptr<TableReader>* table) const {
+    unique_ptr<TableReader>* table, const std::string& fname) const {
   return PlainTableReader::Open(
       table_reader_options.ioptions, table_reader_options.env_options,
       table_reader_options.internal_comparator, std::move(file), file_size,
@@ -28,7 +28,7 @@ Status PlainTableFactory::NewTableReader(
 
 TableBuilder* PlainTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+    WritableFileWriter* file, const std::string& fname) const {
   // Ignore the skip_filters flag. PlainTable format is optimized for small
   // in-memory dbs. The skip_filters optimization is not useful for plain
   // tables

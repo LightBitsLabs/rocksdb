@@ -101,6 +101,8 @@
 #include "util/thread_status_util.h"
 #include "util/xfunc.h"
 
+#include "util/stderr_logger.h"
+
 namespace rocksdb {
 
 const std::string kDefaultColumnFamilyName("default");
@@ -1587,6 +1589,9 @@ Status DBImpl::FlushMemTableToOutputFile(
   assert(cfd->imm()->NumNotFlushed() != 0);
   assert(cfd->imm()->IsFlushPending());
 
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside FlushMemTableToOutputFile");
+
   SequenceNumber earliest_write_conflict_snapshot;
   std::vector<SequenceNumber> snapshot_seqs =
       snapshots_.GetAll(&earliest_write_conflict_snapshot);
@@ -1608,6 +1613,8 @@ Status DBImpl::FlushMemTableToOutputFile(
   // and EventListener callback will be called when the db_mutex
   // is unlocked by the current thread.
   Status s = flush_job.Run(&file_meta);
+
+  //Error(&marklog, "Mark after flush_job.Run()");
 
   if (s.ok()) {
     InstallSuperVersionAndScheduleWorkWrapper(cfd, job_context,
@@ -3612,6 +3619,7 @@ std::vector<Status> DBImpl::MultiGet(
 Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                        const std::string& file_path, bool move_file) {
   Status status;
+  //StderrLogger marklog;
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   ColumnFamilyData* cfd = cfh->cfd();
 
@@ -3632,11 +3640,12 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   std::unique_ptr<RandomAccessFileReader> sst_file_reader;
   sst_file_reader.reset(new RandomAccessFileReader(std::move(sst_file)));
 
+  //Error(&marklog, "Calling NewTableReader with file %s ", file_path);
   std::unique_ptr<TableReader> table_reader;
   status = cfd->ioptions()->table_factory->NewTableReader(
       TableReaderOptions(*cfd->ioptions(), env_options_,
                          cfd->internal_comparator()),
-      std::move(sst_file_reader), file_info.file_size, &table_reader);
+      std::move(sst_file_reader), file_info.file_size, &table_reader, file_path);
   if (!status.ok()) {
     return status;
   }
@@ -3730,6 +3739,8 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
 
   std::string db_fname = TableFileName(
       db_options_.db_paths, meta.fd.GetNumber(), meta.fd.GetPathId());
+  //StderrLogger marklog;
+  //Error(&marklog, "DBImpl::AddFile db_fname %s", db_fname.c_str());
 
   if (move_file) {
     status = env_->LinkFile(file_info->file_path, db_fname);

@@ -36,7 +36,7 @@ class BlockBasedTableFactory : public TableFactory {
   Status NewTableReader(const TableReaderOptions& table_reader_options,
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader) const override;
+                        unique_ptr<TableReader>* table_reader, const std::string& fname) const override;
 
   // This is a variant of virtual member function NewTableReader function with
   // added capability to disable pre-fetching of blocks on BlockBasedTable::Open
@@ -44,11 +44,11 @@ class BlockBasedTableFactory : public TableFactory {
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
                         unique_ptr<TableReader>* table_reader,
-                        bool prefetch_index_and_filter) const;
+                        bool prefetch_index_and_filter, const std::string& fname) const;
 
   TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const override;
+      uint32_t column_family_id, WritableFileWriter* file, const std::string& fname) const override;
 
   // Sanitizes the specified DB Options.
   Status SanitizeOptions(const DBOptions& db_opts,

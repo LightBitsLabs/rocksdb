@@ -123,7 +123,7 @@ Status SstFileWriter::Open(const std::string& file_path) {
   r->builder.reset(r->ioptions.table_factory->NewTableBuilder(
       table_builder_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      r->file_writer.get()));
+      r->file_writer.get(), file_path));
 
   r->file_info.file_path = file_path;
   r->file_info.file_size = 0;

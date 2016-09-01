@@ -32,6 +32,7 @@
 #include "util/iostats_context_imp.h"
 #include "util/stop_watch.h"
 #include "util/thread_status_util.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -44,17 +45,19 @@ TableBuilder* NewTableBuilder(
         int_tbl_prop_collector_factories,
     uint32_t column_family_id, const std::string& column_family_name,
     WritableFileWriter* file, const CompressionType compression_type,
-    const CompressionOptions& compression_opts,
+    const CompressionOptions& compression_opts, const std::string& fname,
     const std::string* compression_dict, const bool skip_filters) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside NewTableBuilder, fname = %s", fname.c_str());
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
                           compression_opts, compression_dict, skip_filters,
                           column_family_name),
-      column_family_id, file);
+      column_family_id, file, fname);
 }
 
 Status BuildTable(
@@ -83,6 +86,8 @@ Status BuildTable(
 
   std::string fname = TableFileName(ioptions.db_paths, meta->fd.GetNumber(),
                                     meta->fd.GetPathId());
+  StderrLogger marklog;
+  //Error(&marklog, "Mark inside BuildTable, fname = %s", fname.c_str());
 #ifndef ROCKSDB_LITE
   EventHelpers::NotifyTableFileCreationStarted(
       ioptions.listeners, dbname, column_family_name, fname, job_id, reason);
@@ -94,7 +99,9 @@ Status BuildTable(
     unique_ptr<WritableFileWriter> file_writer;
     {
       unique_ptr<WritableFile> file;
+      //Error(&marklog, "Mark before NewWritableFile");
       s = NewWritableFile(env, fname, &file, env_options);
+      //Error(&marklog, "Mark after NewWritableFile");
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
@@ -105,10 +112,12 @@ Status BuildTable(
 
       file_writer.reset(new WritableFileWriter(std::move(file), env_options));
 
+      //Error(&marklog, "Mark before NewTableBuilder");
       builder = NewTableBuilder(
           ioptions, internal_comparator, int_tbl_prop_collector_factories,
           column_family_id, column_family_name, file_writer.get(), compression,
-          compression_opts);
+          compression_opts, fname);
+      //Error(&marklog, "Mark after NewTableBuilder");
     }
 
     MergeHelper merge(env, internal_comparator.user_comparator(),
@@ -125,6 +134,8 @@ Status BuildTable(
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
+
+      // Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "Builder Add of value of size: %d", value.size());
       builder->Add(key, value);
       meta->UpdateBoundaries(key, c_iter.ikey().sequence);
 

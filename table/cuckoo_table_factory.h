@@ -58,11 +58,11 @@ class CuckooTableFactory : public TableFactory {
   Status NewTableReader(const TableReaderOptions& table_reader_options,
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table) const override;
+                        unique_ptr<TableReader>* table, const std::string& fname) const override;
 
   TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const override;
+      uint32_t column_family_id, WritableFileWriter* file, const std::string& fname) const override;
 
   // Sanitizes the specified DB Options.
   Status SanitizeOptions(const DBOptions& db_opts,

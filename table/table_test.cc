@@ -313,7 +313,7 @@ class TableConstructor: public Constructor {
                             nullptr /* compression_dict */,
                             false /* skip_filters */, column_family_name),
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-        file_writer_.get()));
+        file_writer_.get(), column_family_name));
 
     for (const auto kv : kv_map) {
       if (convert_to_internal_key_) {
@@ -338,7 +338,7 @@ class TableConstructor: public Constructor {
         GetSink()->contents(), uniq_id_, ioptions.allow_mmap_reads)));
     return ioptions.table_factory->NewTableReader(
         TableReaderOptions(ioptions, soptions, internal_comparator),
-        std::move(file_reader_), GetSink()->contents().size(), &table_reader_);
+        std::move(file_reader_), GetSink()->contents().size(), &table_reader_, column_family_name);
   }
 
   virtual InternalIterator* NewIterator() const override {
@@ -356,11 +356,12 @@ class TableConstructor: public Constructor {
   }
 
   virtual Status Reopen(const ImmutableCFOptions& ioptions) {
+    std::string fname = "dummy";
     file_reader_.reset(test::GetRandomAccessFileReader(new test::StringSource(
         GetSink()->contents(), uniq_id_, ioptions.allow_mmap_reads)));
     return ioptions.table_factory->NewTableReader(
         TableReaderOptions(ioptions, soptions, *last_internal_key_),
-        std::move(file_reader_), GetSink()->contents().size(), &table_reader_);
+        std::move(file_reader_), GetSink()->contents().size(), &table_reader_, fname);
   }
 
   virtual TableReader* GetTableReader() {
@@ -2043,7 +2044,7 @@ TEST_F(PlainTableTest, BasicPlainTableProperties) {
                           nullptr /* compression_dict */,
                           false /* skip_filters */, column_family_name),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      file_writer.get()));
+      file_writer.get(), column_family_name));
 
   for (char c = 'a'; c <= 'z'; ++c) {
     std::string key(8, c);

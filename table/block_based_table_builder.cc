@@ -46,6 +46,9 @@
 #include "util/crc32c.h"
 #include "util/stop_watch.h"
 #include "util/xxhash.h"
+#include "util/stderr_logger.h"
+
+// using namespace memcache;
 
 namespace rocksdb {
 
@@ -540,8 +543,39 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
     const CompressionType compression_type,
     const CompressionOptions& compression_opts,
     const std::string* compression_dict, const bool skip_filters,
-    const std::string& column_family_name) {
+    const std::string& column_family_name,
+    const std::string& fname) {
   BlockBasedTableOptions sanitized_table_options(table_options);
+  
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside BlockBasedTableFactory::NewTableBuilder, fname = %s", fname.c_str());
+
+  //Error(&marklog, "Mark BlockBasedTableBuilder fname before sstfname: %s", fname.c_str());
+  sstfname = fname;
+  //Error(&marklog, "Mark BlockBasedTableBuilder fname after sstfname: %s", sstfname.c_str());
+  //Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "Mark BlockBasedTableBuilder fname after : %s", fname.c_str());
+  //Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "Mark BlockBasedTableBuilder sstfname: %s", sstfname.c_str());
+
+  // client = new Memcache("127.0.0.1:11211");
+  const char *config_string= "--SERVER=127.0.0.1:11211 --BINARY-PROTOCOL";
+  //Error(&marklog, "Mark before memcached()");
+  memc = memcached(config_string, strlen(config_string));
+  //Error(&marklog, "Mark after memcached()");
+/*
+  Error(&marklog, "Does memc have NO_BLOCK %d", memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NO_BLOCK));
+  if (MEMCACHED_SUCCESS != memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_NO_BLOCK, 1)) {
+    Error(&marklog, "Mark failed to set MEMCACHED_BEHAVIOR_NO_BLOCK");
+  }
+*/
+
+ //Error(&marklog, "Does memc have NO_REPLY %d", memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NOREPLY));
+  if (MEMCACHED_SUCCESS != memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_NOREPLY, 1)) {
+    //Error(&marklog, "Mark failed to set MEMCACHED_BEHAVIOR_NOREPLY");
+  }
+
+  placeholderPrefix = "LBPH";
+  //Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "placeholder size in builder: %d", placeholderValue.size());
+
   if (sanitized_table_options.format_version == 0 &&
       sanitized_table_options.checksum != kCRC32c) {
     Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log,
@@ -604,10 +638,56 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   }
 
   r->last_key.assign(key.data(), key.size());
-  r->data_block.Add(key, value);
+  // If value size > threshold, send key+filename, value to LB
+
+  // If value size > threshold, replace value with placeholder slice
+
+  // std::vector<char> lbValue;
+  //StderrLogger marklog;
+
+  bool usePlaceholder = false;
+  std::string lbKey;
+  Slice placeholderValue;
+  if (value.size() > 100 && !value.starts_with(placeholderPrefix)) {
+    //Error(&marklog, "Mark writing to memcached value of size %d %s %s", value.size(), sstfname.c_str(), ExtractUserKey(key).ToString().c_str());
+    // const char* data = value.data();
+    // lbValue = std::vector<char>(data, data + value.size());
+    Slice userKey = ExtractUserKey(key);
+
+    // client->set(sstfname + key.ToString(), lbValue, 0, 0);
+    // std::string lbKey = sstfname + userKey.ToString();
+    lbKey = sstfname + std::string(userKey.data(), userKey.size());
+    memcached_return_t rc= memcached_set(memc, lbKey.data(), lbKey.size(), value.data(), value.size(), 0, 0);
+    if (rc == MEMCACHED_SUCCESS) {
+      usePlaceholder = true;
+       //Error(&marklog, "Memcached set success sstfname %s sstfnamesize %d keysize %d lbKeysize %d", sstfname.c_str(),
+       //         sstfname.size(), userKey.size(), lbKey.size());
+    } else {
+      //Error(&marklog, "Memcached_set rc=%d failure: %s sstfname %s", rc, memcached_strerror(memc, rc), sstfname.c_str());
+      //Error (&marklog, "Last error from server %s", memcached_last_error_message(memc));
+      Log(InfoLogLevel::ERROR_LEVEL, r->ioptions.info_log, "Memcached_set rc=%d failure: %s sstfname %s server error %s", rc, memcached_strerror(memc, rc), sstfname.c_str(), memcached_last_error_message(memc));
+    }
+  } else {
+    //Error(&marklog, "Mark Add() value is below size threshold %s key: %s", sstfname.c_str(), ExtractUserKey(key).ToString().c_str());
+  }
+
+  size_t usedSize;
+  if (usePlaceholder) {
+    std::string v = placeholderPrefix.ToString() + lbKey;
+    //Error(&marklog, "v: %s", v.c_str());
+    placeholderValue = Slice(v);
+    usedSize = placeholderValue.size();
+    //Error(&marklog, "about to call blockbuilder::add with value %s lbKey: %s prefix %s", placeholderValue.ToString().c_str(), lbKey.c_str(), placeholderPrefix.ToString().c_str());
+    r->data_block.Add(key, placeholderValue);
+  } else {
+    usedSize = value.size();
+    r->data_block.Add(key, value);
+  }
   r->props.num_entries++;
   r->props.raw_key_size += key.size();
-  r->props.raw_value_size += value.size();
+
+  // replace raw_value_size with placeholder slice size
+  r->props.raw_value_size += usedSize;
 
   r->index_builder->OnKeyAdded(key);
   NotifyCollectTableCollectorsOnAdd(key, value, r->offset,
@@ -906,6 +986,27 @@ Status BlockBasedTableBuilder::Finish() {
     }
   }
 
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark about to close connection for file %s does memc have NO_REPLY %d", sstfname.c_str(), memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NOREPLY));
+  if (memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NOREPLY)) {
+    if (MEMCACHED_SUCCESS != memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_NOREPLY, 0)) {
+      //Error(&marklog, "Mark failed to unset MEMCACHED_BEHAVIOR_NOREPLY");
+    } else {
+      std::string dummy = "dummy";
+      size_t value_length;
+      memcached_return_t rc;
+      char *valp = memcached_get(memc, dummy.data() , dummy.size() , &value_length, 0, &rc);
+      free(valp);
+      if (rc == MEMCACHED_SUCCESS) {
+        //Error(&marklog, "Mark got a dummy from memcached");
+      } else {
+        //Error(&marklog, "Memcached_get dummy rc=%d failure: %s", rc, memcached_strerror(memc, rc));
+        //Error (&marklog, "Last error from server %s", memcached_last_error_message(memc));
+      }
+    }
+  }
+  memcached_free(memc);
+  //Error(&marklog, "Mark closed connection for file %s ", sstfname.c_str());
   return r->status;
 }
 
@@ -913,6 +1014,7 @@ void BlockBasedTableBuilder::Abandon() {
   Rep* r = rep_;
   assert(!r->closed);
   r->closed = true;
+  memcached_free(memc);
 }
 
 uint64_t BlockBasedTableBuilder::NumEntries() const {
@@ -945,4 +1047,8 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
 
 const std::string BlockBasedTable::kFilterBlockPrefix = "filter.";
 const std::string BlockBasedTable::kFullFilterBlockPrefix = "fullfilter.";
+
+const char *config_string= "--SERVER=127.0.0.1:11211 --BINARY-PROTOCOL";
+memcached_st* BlockBasedTable::memc = memcached(config_string, strlen(config_string));
+memcached_pool_st* BlockBasedTable::memcached_pool = memcached_pool_create(memc, 10, 100);
 }  // namespace rocksdb

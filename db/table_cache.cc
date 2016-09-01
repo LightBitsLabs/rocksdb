@@ -24,6 +24,7 @@
 #include "util/perf_context_imp.h"
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -111,7 +112,7 @@ Status TableCache::GetTableReader(
     s = ioptions_.table_factory->NewTableReader(
         TableReaderOptions(ioptions_, env_options, internal_comparator,
                            skip_filters, level),
-        std::move(file_reader), fd.GetFileSize(), table_reader);
+        std::move(file_reader), fd.GetFileSize(), table_reader, fname);
     TEST_SYNC_POINT("TableCache::GetTableReader:0");
   }
   return s;
@@ -244,6 +245,8 @@ Status TableCache::Get(const ReadOptions& options,
   Cache::Handle* handle = nullptr;
   std::string* row_cache_entry = nullptr;
 
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside TableCache::Get");
 #ifndef ROCKSDB_LITE
   IterKey row_cache_key;
   std::string row_cache_entry_buffer;
@@ -285,6 +288,7 @@ Status TableCache::Get(const ReadOptions& options,
 #endif  // ROCKSDB_LITE
 
   if (!t) {
+    //Error(&marklog, "Mark calling FindTable inside TableCache::Get() number: %d PathId: %d packed_number_and_path_id: %d", fd.GetNumber(), fd.GetPathId(), fd.packed_number_and_path_id);
     s = FindTable(env_options_, internal_comparator, fd, &handle,
                   options.read_tier == kBlockCacheTier /* no_io */,
                   true /* record_read_stats */, file_read_hist, skip_filters,

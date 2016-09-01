@@ -49,6 +49,7 @@
 #include "util/perf_context_imp.h"
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -909,6 +910,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
                   bool* key_exists, SequenceNumber* seq) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside Version::Get");
 
   assert(status->ok() || status->IsMergeInProgress());
 

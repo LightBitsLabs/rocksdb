@@ -1117,7 +1117,7 @@ Status CompactionJob::OpenCompactionOutputFile(
       *cfd->ioptions(), cfd->internal_comparator(),
       cfd->int_tbl_prop_collector_factories(), cfd->GetID(), cfd->GetName(),
       sub_compact->outfile.get(), sub_compact->compaction->output_compression(),
-      cfd->ioptions()->compression_opts, &sub_compact->compression_dict,
+      cfd->ioptions()->compression_opts, fname, &sub_compact->compression_dict,
       skip_filters));
   LogFlush(db_options_.info_log);
   return s;

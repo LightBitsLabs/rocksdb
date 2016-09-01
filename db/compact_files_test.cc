@@ -15,6 +15,7 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 #include "util/testharness.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -146,7 +147,9 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
   ASSERT_OK(db->CompactFiles(CompactionOptions(), l0_files, 1));
 
   // verify all compaction input files are deleted
+  StderrLogger marklog;
   for (auto fname : l0_files) {
+    Error(&marklog, "File %s", fname.c_str());
     ASSERT_EQ(Status::NotFound(), env_->FileExists(fname));
   }
   delete db;

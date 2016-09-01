@@ -8,6 +8,7 @@
 #include "db/db_impl.h"
 #include "db/version_set.h"
 #include "table/get_context.h"
+#include "util/stderr_logger.h"
 
 namespace rocksdb {
 
@@ -24,8 +25,10 @@ CompactedDBImpl::~CompactedDBImpl() {
 }
 
 size_t CompactedDBImpl::FindFile(const Slice& key) {
+  //StderrLogger marklog;
   size_t left = 0;
   size_t right = files_.num_files - 1;
+  //Error(&marklog, "mark inside CompactedDBImpl::FindFile");
   while (left < right) {
     size_t mid = (left + right) >> 1;
     const FdWithKeyRange& f = files_.files[mid];
@@ -44,10 +47,12 @@ size_t CompactedDBImpl::FindFile(const Slice& key) {
 
 Status CompactedDBImpl::Get(const ReadOptions& options,
      ColumnFamilyHandle*, const Slice& key, std::string* value) {
+  //StderrLogger marklog;
   GetContext get_context(user_comparator_, nullptr, nullptr, nullptr,
                          GetContext::kNotFound, key, value, nullptr, nullptr,
                          nullptr);
   LookupKey lkey(key, kMaxSequenceNumber);
+  //Error(&marklog, "Mark inside CompactedDBImpl::Get file %d", files_.files[FindFile(key)].fd.GetNumber());
   files_.files[FindFile(key)].fd.table_reader->Get(
       options, lkey.internal_key(), &get_context);
   if (get_context.State() == GetContext::kFound) {
@@ -60,6 +65,8 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
     const std::vector<ColumnFamilyHandle*>&,
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
   autovector<TableReader*, 16> reader_list;
+  //StderrLogger marklog;
+  //Error(&marklog, "Mark inside CompactedDBImpl::MultiGet");
   for (const auto& key : keys) {
     const FdWithKeyRange& f = files_.files[FindFile(key)];
     if (user_comparator_->Compare(key, ExtractUserKey(f.smallest_key)) < 0) {

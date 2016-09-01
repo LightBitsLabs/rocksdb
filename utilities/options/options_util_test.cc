@@ -105,13 +105,13 @@ class DummyTableFactory : public TableFactory {
   virtual Status NewTableReader(const TableReaderOptions& table_reader_options,
                                 unique_ptr<RandomAccessFileReader>&& file,
                                 uint64_t file_size,
-                                unique_ptr<TableReader>* table_reader) const {
+                                unique_ptr<TableReader>* table_reader, const std::string& fname) const {
     return Status::NotSupported();
   }
 
   virtual TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const {
+      uint32_t column_family_id, WritableFileWriter* file, const std::string& fname) const {
     return nullptr;
   }
 

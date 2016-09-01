@@ -47,10 +47,11 @@ void MakeBuilder(const Options& options, const ImmutableCFOptions& ioptions,
   unique_ptr<WritableFile> wf(new test::StringSink);
   writable->reset(new WritableFileWriter(std::move(wf), EnvOptions()));
 
+  std::string fname = "somename";
   builder->reset(NewTableBuilder(
       ioptions, internal_comparator, int_tbl_prop_collector_factories,
       kTestColumnFamilyId, kTestColumnFamilyName,
-      writable->get(), options.compression, options.compression_opts));
+      writable->get(), options.compression, options.compression_opts, fname));
 }
 }  // namespace
 

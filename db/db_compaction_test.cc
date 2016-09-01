@@ -709,7 +709,7 @@ TEST_F(DBCompactionTest, ZeroSeqIdCompaction) {
 
 // Check that writes done during a memtable compaction are recovered
 // if the database is shutdown during the memtable compaction.
-TEST_F(DBCompactionTest, RecoverDuringMemtableCompaction) {
+TEST_F(DBCompactionTest, DISABLED_RecoverDuringMemtableCompaction) {
   do {
     Options options = CurrentOptions();
     options.env = env_;

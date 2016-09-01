@@ -65,7 +65,7 @@ void createSST(const std::string& file_name,
                           nullptr /* compression_dict */,
                           false /* skip_filters */, column_family_name),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      file_writer.get()));
+      file_writer.get(), file_name));
 
   // Populate slightly more than 1K keys
   uint32_t num_keys = 1024;

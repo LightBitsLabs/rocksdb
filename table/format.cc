@@ -293,7 +293,7 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
 
 }  // namespace
 
-Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
+Status ReadBlockContents(rocksdb::Logger* info_log, RandomAccessFileReader* file, const Footer& footer,
                          const ReadOptions& options, const BlockHandle& handle,
                          BlockContents* contents, Env* env,
                          bool decompression_requested,
@@ -305,7 +305,12 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
   char stack_buf[DefaultStackBufferSize];
   char* used_buf = nullptr;
   rocksdb::CompressionType compression_type;
-
+/*
+  if (info_log != nullptr) {
+    Log(InfoLogLevel::ERROR_LEVEL, info_log, "Inside ReadBlockContents");
+    LogFlush(info_log);
+  }
+*/
   if (decompression_requested &&
       n + kBlockTrailerSize < DefaultStackBufferSize) {
     // If we've got a small enough hunk of data, read it in to the
