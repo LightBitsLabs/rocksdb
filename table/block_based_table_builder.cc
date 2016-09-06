@@ -571,8 +571,10 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
 */
 
  //Error(&marklog, "Does memc have NO_REPLY %d", memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NOREPLY));
-  if (MEMCACHED_SUCCESS != memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_NOREPLY, 1)) {
-    //Error(&marklog, "Mark failed to set MEMCACHED_BEHAVIOR_NOREPLY");
+  if (BlockBasedTableBuilder::use_no_reply) {
+    if (MEMCACHED_SUCCESS != memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_NOREPLY, 1)) {
+      //Error(&marklog, "Mark failed to set MEMCACHED_BEHAVIOR_NOREPLY");
+    }
   }
 
   placeholderPrefix = "LBPH";
@@ -1050,6 +1052,7 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
 const std::string BlockBasedTable::kFilterBlockPrefix = "filter.";
 const std::string BlockBasedTable::kFullFilterBlockPrefix = "fullfilter.";
 
+const bool BlockBasedTableBuilder::use_no_reply = NULL != getenv( "NOREPLY" );
 const std::string BlockBasedTableBuilder::server_config = "--SERVER=" + std::string(getenv( "KV_IPADDR" )) + " --BINARY-PROTOCOL";
 memcached_st* BlockBasedTable::memc = memcached(BlockBasedTableBuilder::server_config.data(), BlockBasedTableBuilder::server_config.size());
 memcached_pool_st* BlockBasedTable::memcached_pool = memcached_pool_create(memc, 10, 100);

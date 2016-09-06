@@ -89,6 +89,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   TableProperties GetTableProperties() const override;
 
   static const std::string server_config;
+  static const bool use_no_reply;
 
  private:
   bool ok() const { return status().ok(); }
