@@ -557,9 +557,11 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
   //Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "Mark BlockBasedTableBuilder sstfname: %s", sstfname.c_str());
 
   // client = new Memcache("127.0.0.1:11211");
-  const char *config_string= "--SERVER=127.0.0.1:11211 --BINARY-PROTOCOL";
+  //const char *config_string= "--SERVER=127.0.0.1:11211 --BINARY-PROTOCOL";
   //Error(&marklog, "Mark before memcached()");
-  memc = memcached(config_string, strlen(config_string));
+  //memc = memcached(config_string, strlen(config_string));
+  memc = memcached(BlockBasedTableBuilder::server_config.data(), BlockBasedTableBuilder::server_config.size());
+  //Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log, "Mark BlockBasedTableBuilder config_string2: %s", BlockBasedTableBuilder::config_string2.c_str());
   //Error(&marklog, "Mark after memcached()");
 /*
   Error(&marklog, "Does memc have NO_BLOCK %d", memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_NO_BLOCK));
@@ -1048,7 +1050,7 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
 const std::string BlockBasedTable::kFilterBlockPrefix = "filter.";
 const std::string BlockBasedTable::kFullFilterBlockPrefix = "fullfilter.";
 
-const char *config_string= "--SERVER=127.0.0.1:11211 --BINARY-PROTOCOL";
-memcached_st* BlockBasedTable::memc = memcached(config_string, strlen(config_string));
+const std::string BlockBasedTableBuilder::server_config = "--SERVER=" + std::string(getenv( "KV_IPADDR" )) + " --BINARY-PROTOCOL";
+memcached_st* BlockBasedTable::memc = memcached(BlockBasedTableBuilder::server_config.data(), BlockBasedTableBuilder::server_config.size());
 memcached_pool_st* BlockBasedTable::memcached_pool = memcached_pool_create(memc, 10, 100);
 }  // namespace rocksdb
